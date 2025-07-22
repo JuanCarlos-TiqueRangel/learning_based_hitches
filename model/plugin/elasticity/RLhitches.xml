@@ -1,0 +1,120 @@
+
+<!-- Copyright 2021 DeepMind Technologies Limited
+
+     Licensed under the Apache License, Version 2.0 (the "License");
+     you may not use this file except in compliance with the License.
+     You may obtain a copy of the License at
+
+         http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+-->
+
+<mujoco model="Cable">
+  <include file="scene.xml"/>
+
+  <extension>
+    <plugin plugin="mujoco.elasticity.cable"/>
+  </extension>
+
+  <statistic center="0 0 .3" extent="1"/>
+  <visual>
+    <global elevation="-30"/>
+  </visual>
+
+  <compiler autolimits="true"/>
+
+  <size memory="2M"/>
+
+  <worldbody>
+    
+    <!-- cable 1 -->
+    <composite prefix="RA" type="cable" curve="s" count="41" size="1" offset="-.3 -0.5 1.">
+      <plugin plugin="mujoco.elasticity.cable">
+        <!-- Units are in Pa (SI) -->
+        <config key="twist" value="1e7"/>
+        <config key="bend" value="4e3"/>
+        <config key="vmax" value="0.05"/>
+      </plugin>
+      <joint kind="main" damping=".015"/>
+      <geom type="capsule" size=".005" rgba=".8 .2 .1 1" condim="1"/>
+    </composite>
+
+    <!-- <composite type="cable" count="40 1 1" offset="0 0 0" prefix="RA">
+      <joint kind="main" damping="0.005"/>
+      <geom type="capsule" size="0.02 0.06"/>
+    </composite> -->
+
+    <!-- red point body -->    
+    <body name="A_point" pos=".7 -0.5 1.">
+      <!-- 3 degrees of freedom -->
+      <joint name="A_point_x" type="slide" axis="1 0 0" damping=".1"/>
+      <joint name="A_point_y" type="slide" axis="0 1 0" damping=".1"/>
+      <joint name="A_point_z" type="slide" axis="0 0 1" damping=".1"/>
+
+      <!-- Visual red sphere -->
+      <geom name="A_sphere" type="sphere" size="0.02" rgba="1 0 0 1"/>
+      
+    </body>
+
+
+    <!-- cable 2 -->
+    <composite prefix="RB" type="cable" curve="s" count="41" size="1" offset="-.3 0.5 1." initial="none">
+      <plugin plugin="mujoco.elasticity.cable">
+        <!--Units are in Pa (SI)-->
+        <config key="twist" value="1e7"/> <!-- Twist stiffness: Increased twist stiffness for more rigidity -->
+        <config key="bend" value="4e3"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
+        <config key="vmax" value="0.05"/> <!-- Maximum velocity -->
+      </plugin>
+      <joint kind="main" damping=".015"/>
+      <geom type="capsule" size=".005" rgba=".8 1. .1 1" condim="1"/>
+    </composite>
+
+    <!-- red point body -->    
+    <body name="B_point" pos=".7 0.5 1.">
+      <!-- 3 degrees of freedom -->
+      <joint name="B_point_x" type="slide" axis="1 0 0" damping=".1"/>
+      <joint name="B_point_y" type="slide" axis="0 1 0" damping=".1"/>
+      <joint name="B_point_z" type="slide" axis="0 0 1" damping=".1"/>
+
+      <!-- Visual red sphere -->
+      <geom name="B_sphere" type="sphere" size="0.02" rgba="1 0 0 1"/>
+    </body>
+
+  </worldbody>
+
+
+  <equality>
+    <connect name="cableA_right_boundary" body1="RAB_last" body2="A_point" anchor=".025 0 0"/>
+  </equality>
+  <contact>
+    <exclude body1="RAB_last" body2="A_point"/>
+  </contact>
+
+  <equality>
+    <connect name="cableB_right_boundary" body1="RBB_last" body2="B_point" anchor=".025 0 0"/>
+  </equality>
+  <contact>
+    <exclude body1="RBB_last" body2="B_point"/>
+  </contact>
+
+
+  <actuator>
+    <!-- Position actuators on each axis -->
+    <position name="RA_x" joint="A_point_x" kp="0.5" kv="0.1"/>
+    <position name="RA_y" joint="A_point_y" kp="0.5" kv="0.1"/>
+    <position name="RA_z" joint="A_point_z" kp="10.0" kv="0.2"/>
+  </actuator>
+
+    <actuator>
+    <!-- Position actuators on each axis -->
+    <position name="RB_x" joint="B_point_x" kp="0.5" kv="0.1"/>
+    <position name="RB_y" joint="B_point_y" kp="0.5" kv="0.1"/>
+    <position name="RB_z" joint="B_point_z" kp="10.0" kv="0.2"/>
+  </actuator>
+</mujoco>
+
