@@ -1,5 +1,5 @@
 <mujoco model="PID Controllers">
-  <size memory="10M"/>
+  <size memory="200M"/>
 
   <visual>
     <headlight diffuse=".2 .2 .2"/>
@@ -15,20 +15,20 @@
       </instance>
       <!-- PD controller - settles below setpoint -->
       <instance name="pid2">
-        <config key="kp" value="4.0"/>
-        <config key="kd" value="0.4"/>
+        <config key="kp" value="5.0"/>
+        <config key="kd" value="0.5"/>
       </instance>
       <!-- PID controller - reaches setpoint -->
       <instance name="pid3">
         <config key="kp" value="4.0"/>
-        <config key="ki" value="4"/>
-        <config key="kd" value="0.4"/>
+        <config key="ki" value="5.0"/>
+        <config key="kd" value="0.5"/>
       </instance>
       <!-- PID controller with clamped I term. -->
       <instance name="pid4">
         <config key="kp" value="4.0"/>
-        <config key="ki" value="4"/>
-        <config key="kd" value="0.4"/>
+        <config key="ki" value="5.0"/>
+        <config key="kd" value="0.5"/>
         <config key="imax" value=".5"/>
       </instance>
     </plugin>

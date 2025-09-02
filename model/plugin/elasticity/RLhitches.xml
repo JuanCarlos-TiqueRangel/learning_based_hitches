@@ -28,20 +28,20 @@
 
   <compiler autolimits="true"/>
 
-  <size memory="2M"/>
+  <size memory="1000M"/>
 
   <worldbody>
-    
+
     <!-- cable 1 -->
-    <composite prefix="RA" type="cable" curve="s" count="41" size="1" offset="-.3 -0.5 1.">
+    <composite prefix="RA" type="cable" curve="s" count="120" size="1.0" offset="-.3 -0.5 1.">
       <plugin plugin="mujoco.elasticity.cable">
         <!-- Units are in Pa (SI) -->
-        <config key="twist" value="1e7"/>
-        <config key="bend" value="4e3"/>
-        <config key="vmax" value="0.05"/>
+        <config key="twist" value="1e5"/> <!-- Twist stiffness: Increased twist stiffness for more rigidity -->
+        <config key="bend" value="4e1"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
+        <config key="vmax" value="0.0"/> <!-- Maximum velocity -->
       </plugin>
       <joint kind="main" damping=".015"/>
-      <geom type="capsule" size=".005" rgba=".8 .2 .1 1" condim="1"/>
+      <geom type="capsule" size=".004" rgba=".8 .2 .1 1" condim="1"/>
     </composite>
 
     <!-- <composite type="cable" count="40 1 1" offset="0 0 0" prefix="RA">
@@ -63,15 +63,15 @@
 
 
     <!-- cable 2 -->
-    <composite prefix="RB" type="cable" curve="s" count="41" size="1" offset="-.3 0.5 1." initial="none">
+    <composite prefix="RB" type="cable" curve="s" count="120" size="1.0" offset="-.3 0.5 1." initial="none">
       <plugin plugin="mujoco.elasticity.cable">
         <!--Units are in Pa (SI)-->
-        <config key="twist" value="1e7"/> <!-- Twist stiffness: Increased twist stiffness for more rigidity -->
-        <config key="bend" value="4e3"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
-        <config key="vmax" value="0.05"/> <!-- Maximum velocity -->
+        <config key="twist" value="1e5"/> <!-- Twist stiffness: Increased twist stiffness for more rigidity -->
+        <config key="bend" value="4e1"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
+        <config key="vmax" value="0.0"/> <!-- Maximum velocity -->
       </plugin>
       <joint kind="main" damping=".015"/>
-      <geom type="capsule" size=".005" rgba=".8 1. .1 1" condim="1"/>
+      <geom type="capsule" size=".004" rgba=".8 .2 .1 1" condim="1"/>
     </composite>
 
     <!-- red point body -->    
@@ -105,16 +105,16 @@
 
   <actuator>
     <!-- Position actuators on each axis -->
-    <position name="RA_x" joint="A_point_x" kp="0.5" kv="0.1"/>
-    <position name="RA_y" joint="A_point_y" kp="0.5" kv="0.1"/>
-    <position name="RA_z" joint="A_point_z" kp="10.0" kv="0.2"/>
+    <position name="RA_x" joint="A_point_x" kp="10.0" kv="7.5"/>
+    <position name="RA_y" joint="A_point_y" kp="10.0" kv="7.5"/>
+    <position name="RA_z" joint="A_point_z" kp="10.0" kv="7.5"/>
   </actuator>
 
     <actuator>
     <!-- Position actuators on each axis -->
-    <position name="RB_x" joint="B_point_x" kp="0.5" kv="0.1"/>
-    <position name="RB_y" joint="B_point_y" kp="0.5" kv="0.1"/>
-    <position name="RB_z" joint="B_point_z" kp="10.0" kv="0.2"/>
+    <position name="RB_x" joint="B_point_x" kp="10.0" kv="7.5"/>
+    <position name="RB_y" joint="B_point_y" kp="10.0" kv="7.5"/>
+    <position name="RB_z" joint="B_point_z" kp="10.0" kv="7.5"/>
   </actuator>
 </mujoco>
 
