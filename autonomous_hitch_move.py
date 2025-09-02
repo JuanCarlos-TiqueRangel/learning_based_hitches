@@ -2,6 +2,13 @@ import time
 import numpy as np
 import mujoco
 import mujoco.viewer
+import os
+
+try:
+    mujoco.mj_setNumThreads(max(1, os.cpu_count() - 1))
+except Exception:
+    pass
+
 
 MODEL = "./model/plugin/elasticity/RLhitches.xml"
 
@@ -33,19 +40,34 @@ BASE_RGBA   = model.geom_rgba.copy()
 RA_r0 = BASE_RADIUS[RA_idx].copy()               # use base radii for gap computation
 RB_r0 = BASE_RADIUS[RB_idx].copy()
 
+
+# # 1) Collision masks
+# #   RA: contype=1, conaffinity=2 ; RB: contype=2, conaffinity=1
+# model.geom_contype[RA,]     = 1
+# model.geom_conaffinity[RA,] = 2
+# model.geom_contype[RB,]     = 2
+# model.geom_conaffinity[RB,] = 1
+
 # ---- make hitches hold: frictional contact on cable capsules ----
 ids = np.array(RA + RB, dtype=int)
-model.geom_matid[ids]   = -1          # ensure per-geom colors can show
-model.geom_condim[ids]  = 6           # enable sliding + torsional + rolling friction
-model.geom_friction[ids, 0] = 0.1     # slide
-model.geom_friction[ids, 1] = 0.005   # spin
-model.geom_friction[ids, 2] = 0.0001  # roll
-model.geom_margin[ids]  = 0.0005      # small positive margin helps stability
+model.geom_matid[ids]   = -1          # # ensure per-geom colors can show
+model.geom_condim[ids]  = 3           # 6 # enable sliding + torsional + rolling friction
+model.geom_friction[ids, 0] = 0.3     # 0.1 # slide
+model.geom_friction[ids, 1] = 0.0   # 0.005 # spin
+model.geom_friction[ids, 2] = 0.0  # 0.0001 # roll
+model.geom_margin[ids]  = 0.0005      # # small positive margin helps stability
 
 # Optional global contact softening (stability)
 model.opt.o_solimp[:] = np.array([0.9, 0.95, 0.001, 0.5, 2.0])
 model.opt.o_solref[:] = np.array([0.02, 1.0])
-model.opt.timestep    = 0.001  # tighter time step during knotting
+#model.opt.timestep    = 0.001  # tighter time step during knotting
+
+# 3) Solver/timestep
+model.opt.timestep  = 0.001
+model.opt.solver    = mujoco.mjtSolver.mjSOL_CG 
+model.opt.iterations = 200
+model.opt.tolerance  = 1e-8
+
 
 # Warn if contact buffer saturates
 def warn_if_contact_saturated():
@@ -260,8 +282,10 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     last_print = 0.0
 
     # EXAMPLE: set initial targets once (you can change these anytime)
-    move_A_to(x=0.10, y= 0.50, z=0.5, speed_mps=0.8)
-    move_B_to(x=0.10, y= 0.50, z=0.5, speed_mps=0.8)
+    move_A_to(x=-0.10, y= 0.50, z=0.5, speed_mps=0.8)
+    move_B_to(x=-0.10, y= 0.50, z=0.5, speed_mps=0.8)
+
+    substeps = 2  # try 2–4 if you go back to 0.001 step
 
     while viewer.is_running():
         t = time.time() - t0
@@ -274,11 +298,11 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             move_B_to(x=-0.92, y= -0.90, z=0.0, speed_mps=3.5)
             
         #if t > 35.0:
-        if t > 200.0:
+        if t > 35.0:
             circle_from_35(
                 t,
                 R=0.5,
-                period_s=22.0,     # <-- slower (e.g., 18 s per lap)
+                period_s=20.0,     # <-- slower (e.g., 18 s per lap)
                 cwA=True,
                 cwB=True,
                 speed_mps=0.8,     # <-- slower ramp to match your actuators
@@ -288,13 +312,25 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             
             
         #if t > 50.0:
-        if t > 300.0:
-            move_A_to(x=-0.7, y= -0.90, z=0.0, speed_mps=1.5)
-            move_B_to(x=-0.7, y= 0.90, z=0.0, speed_mps=1.5)
+        if t > 45.0:
+            move_A_to(x=-0.5, y= 0.0, z=0.0, speed_mps=4.5)
+            move_B_to(x=-0.5, y= -0.0, z=0.0, speed_mps=4.5)
 
+        if t > 85.0:
+            move_A_to(x=-0.0, y= 0.5, z=0.0, speed_mps=4.5)
+            move_B_to(x=-0.0, y= -0.5, z=0.0, speed_mps=4.5)
+            
+        if t > 120.0:
+            move_A_to(x=-0.5, y= -0.0, z=0.0, speed_mps=4.5)
+            move_B_to(x=-0.5, y= 0.0, z=0.0, speed_mps=4.5)
 
+        if t > 180.0:
+            move_A_to(x=-0.0, y= 0.5, z=0.0, speed_mps=4.5)
+            move_B_to(x=-0.0, y= -0.5, z=0.0, speed_mps=4.5)
 
-
+        if t > 220.0:
+            move_A_to(x=-0.5, y= -0.0, z=0.0, speed_mps=4.5)
+            move_B_to(x=-0.5, y= 0.0, z=0.0, speed_mps=4.5)
 
             # move_A_to(x=0.55, y= 0.90, z=0.0, speed_mps=3.5)
             # move_B_to(x=-0.52, y= -0.90, z=0.0, speed_mps=3.5)
@@ -366,6 +402,9 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             model.geom_size[g2, 0] = BASE_RADIUS[g2] * THICK_SCALE
             model.geom_rgba[g1] = np.array([0.0, 1.0, 0.0, 1.0])
             model.geom_rgba[g2] = np.array([0.0, 1.0, 0.0, 1.0])
+
+        # for _ in range(4):  # 4 substeps @ 0.001 -> 250 FPS physics
+        #     mujoco.mj_step(model, data)
 
         viewer.sync()
         time.sleep(0.001)
