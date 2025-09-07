@@ -37,11 +37,12 @@
       <plugin plugin="mujoco.elasticity.cable">
         <!-- Units are in Pa (SI) -->
         <config key="twist" value="1e5"/> <!-- Twist stiffness: Increased twist stiffness for more rigidity -->
-        <config key="bend" value="4e1"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
+        <config key="bend" value="1e5"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
         <config key="vmax" value="0.0"/> <!-- Maximum velocity -->
       </plugin>
-      <joint kind="main" damping=".015"/>
-      <geom type="capsule" size=".005" rgba=".8 .2 .1 1" condim="1"/>
+      <!-- <joint kind="main" damping=".015"/> -->
+      <joint kind="main" damping="0.01"/>
+      <geom type="capsule" size="0.005" rgba=".8 .2 .1 1" condim="1"/>
     </composite>
 
     <!-- <composite type="cable" count="40 1 1" offset="0 0 0" prefix="RA">
@@ -67,11 +68,12 @@
       <plugin plugin="mujoco.elasticity.cable">
         <!--Units are in Pa (SI)-->
         <config key="twist" value="1e5"/> <!-- Twist stiffness: Increased twist stiffness for more rigidity -->
-        <config key="bend" value="4e1"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
+        <config key="bend" value="1e5"/> <!-- Bend stiffness: Reduced bend stiffness for more flexibility -->
         <config key="vmax" value="0.0"/> <!-- Maximum velocity -->
       </plugin>
-      <joint kind="main" damping=".015"/>
-      <geom type="capsule" size=".005" rgba=".8 .2 .1 1" condim="1"/>
+      <!-- <joint kind="main" damping=".015"/> -->
+      <joint kind="main" damping="0.01"/>
+      <geom type="capsule" size="0.005" rgba=".8 .2 .1 1" condim="1"/>
     </composite>
 
     <!-- red point body -->    
@@ -88,33 +90,51 @@
   </worldbody>
 
 
+  <!-- Rigidly attach each cable tip to its drone -->
   <equality>
-    <connect name="cableA_right_boundary" body1="RAB_last" body2="A_point" anchor=".025 0 0"/>
+    <!-- <weld name="attach_RA" body1="RAB_last" body2="A_point" solref="0.002 1"/>
+    <weld name="attach_RB" body1="RBB_last" body2="B_point" solref="0.002 1"/> -->
+    <connect name="cableA_to_A" body1="RAB_last" body2="A_point" anchor="0 0 0"/>
+    <connect name="cableB_to_B" body1="RBB_last" body2="B_point" anchor="0 0 0"/>
   </equality>
+
+  <!-- Avoid self-collisions at the attachment -->
   <contact>
     <exclude body1="RAB_last" body2="A_point"/>
-  </contact>
-
-  <equality>
-    <connect name="cableB_right_boundary" body1="RBB_last" body2="B_point" anchor=".025 0 0"/>
-  </equality>
-  <contact>
     <exclude body1="RBB_last" body2="B_point"/>
   </contact>
 
 
   <actuator>
     <!-- Position actuators on each axis -->
+    <position name="RA_x" joint="A_point_x" kp="400.0" kv="38.5"/>
+    <position name="RA_y" joint="A_point_y" kp="400.0" kv="38.5"/>
+    <position name="RA_z" joint="A_point_z" kp="400.0" kv="38.5"/>
+  </actuator>
+
+  <actuator>
+    <!-- Position actuators on each axis -->
+    <position name="RB_x" joint="B_point_x" kp="400.0" kv="38.5"/>
+    <position name="RB_y" joint="B_point_y" kp="400.0" kv="38.5"/>
+    <position name="RB_z" joint="B_point_z" kp="400.0" kv="38.5"/>
+
+  </actuator>
+
+</mujoco>
+
+  <!-- <actuator>
+    <!-- Position actuators on each axis -->
     <position name="RA_x" joint="A_point_x" kp="10.0" kv="8.5"/>
     <position name="RA_y" joint="A_point_y" kp="10.0" kv="8.5"/>
     <position name="RA_z" joint="A_point_z" kp="10.0" kv="8.5"/>
   </actuator>
 
-    <actuator>
+  <actuator>
     <!-- Position actuators on each axis -->
     <position name="RB_x" joint="B_point_x" kp="10.0" kv="8.5"/>
     <position name="RB_y" joint="B_point_y" kp="10.0" kv="8.5"/>
     <position name="RB_z" joint="B_point_z" kp="10.0" kv="8.5"/>
-  </actuator>
-</mujoco>
+  </actuator> -->
+
+<!-- </mujoco> -->
 
