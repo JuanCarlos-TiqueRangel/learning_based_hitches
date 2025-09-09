@@ -20,7 +20,6 @@ MODEL = "./model/plugin/elasticity/RLhitches.xml"
 model = mujoco.MjModel.from_xml_path(MODEL)
 data  = mujoco.MjData(model)
 
-
 def gname(g):
     return mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or ""
 
@@ -57,95 +56,8 @@ def load_snapshot(model, data, path=SNAP_PATH):
     data.time = 0.0
     print(f"[snapshot] restored ← {os.path.abspath(path)}")
 
-try:
-    import glfw
-    KEY_S = glfw.KEY_S
-    KEY_L = glfw.KEY_L
-    PRESS = glfw.PRESS
-except Exception:
-    KEY_S = ord('S')
-    KEY_L = ord('L')
-    PRESS = None  # not used
 
-def viewer_key_callback(evt):
-    """Handle S(save) / L(load) from the viewer window, robust to evt shape."""
-    # Normalize event to (key, action)
-    key, action = None, PRESS
-    if isinstance(evt, (int, np.integer)):
-        key = int(evt)
-        action = PRESS
-    elif isinstance(evt, (tuple, list)) and len(evt) >= 2:
-        key, action = int(evt[0]), int(evt[1])
-    else:
-        # last-resort attempt
-        try:
-            key = int(evt)
-        except Exception:
-            return
-
-    # Only on PRESS (if we know what PRESS means)
-    if PRESS is not None and action != PRESS:
-        return
-
-    print(f"[snapshot] key event: key={key} action={action}", flush=True)
-
-    if key in (KEY_S, ord('s'), ord('S')):
-        save_snapshot(model, data)
-    elif key in (KEY_L, ord('l'), ord('L')):
-        try:
-            load_snapshot(model, data)
-        except FileNotFoundError:
-            print("[snapshot] no file to load yet", flush=True)
-
-
-# Optional: file-trigger fallback if keys don’t reach the window
-def poll_snapshot_flags():
-    if os.path.exists("save.flag"):
-        try: save_snapshot(model, data)
-        finally: os.remove("save.flag")
-    if os.path.exists("load.flag"):
-        try: load_snapshot(model, data)
-        finally: os.remove("load.flag")
-# ---------- /SNAPSHOT ----------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-############################### SNAPSHOT
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+load_snapshot(model, data, SNAP_PATH)
 
 
 # collect the capsule geoms that belong to each cable (by name)
@@ -199,11 +111,6 @@ model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICIT
 model.opt.solver     = mujoco.mjtSolver.mjSOL_NEWTON
 model.opt.iterations = 100
 model.opt.tolerance  = 1e-6
-
-
-
-
-
 
 
 
@@ -330,11 +237,6 @@ def _update_live_plots(sim_time, A_cmd, B_cmd):
     _prev_A_cmd[:] = A_cmd
     _prev_B_cmd[:] = B_cmd
     _prev_sample_time = sim_time
-
-
-
-
-
 
 
 
@@ -553,10 +455,6 @@ def print_robot_positions(prefix=""):
 
 
 
-
-
-
-
 # ---------- in-viewer velocity arrows (actual=green, commanded=blue) ----------
 _vel_prev_time = None
 _vel_prev_posA = None
@@ -651,27 +549,13 @@ def draw_velocity_arrows(viewer, model, data, A_cmd, B_cmd):
     _vel_prev_Bcmd[:] = B_cmd
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ------------------- run with viewer -------------------
 with mujoco.viewer.launch_passive(model, data) as viewer:
     # viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT]  = True
     # viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE]  = True
 
     # keyboard handler
-    viewer.user_key_callback = viewer_key_callback
+    #viewer.user_key_callback = viewer_key_callback
 
     print("CWD:", os.getcwd())
     print("Snapshot path:", os.path.abspath(SNAP_PATH))
@@ -681,81 +565,63 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     last_print = 0.0
     last_pos_print = 0.0
 
-    # EXAMPLE: set initial targets once (you can change these anytime)
-    move_A_to(x=-0.2, y= 0.50, z=0.0, speed_mps=0.8)
-    move_B_to(x=-0.2, y= 0.50, z=0.0, speed_mps=0.8)
-
     substeps = 2  # try 2–4 if you go back to 0.001 step
 
     while viewer.is_running():
         
-        poll_snapshot_flags()
+        #poll_snapshot_flags()
         
         t = time.time() - t0
 
         # --- YOUR MANUAL COMMANDS HERE (call whenever you want to change targets) ---
         # Example: after 3s, send A somewhere else and speed it up
-        if t > 5.0:
-            move_A_to(x=-0.95, y= 0.90, z=0.0, speed_mps=0.8)
-            move_B_to(x=-0.90, y= -0.90, z=0.0, speed_mps=0.7)
+        # if t > 5.0:
+        #     move_A_to(x=-0.95, y= 0.90, z=0.0, speed_mps=0.8)
+        #     move_B_to(x=-0.90, y= -0.90, z=0.0, speed_mps=0.7)
             
-        #if t > 35.0:
-        if t > 30.0:
-            circle_from_35(
-                t,
-                R=0.5,
-                period_s=20.0,     # <-- slower (e.g., 18 s per lap)
-                cwA=True,
-                cwB=True,
-                speed_mps=0.8,     # <-- slower ramp to match your actuators
-                v_ref_max=0.25,    # <-- (optional) limit reference speed to 0.25 m/s
-                ramp_s=0.5         # <-- ease in over 4 s
-            )
+        # #if t > 35.0:
+        # if t > 30.0:
+        #     circle_from_35(
+        #         t,
+        #         R=0.5,
+        #         period_s=20.0,     # <-- slower (e.g., 18 s per lap)
+        #         cwA=True,
+        #         cwB=True,
+        #         speed_mps=0.8,     # <-- slower ramp to match your actuators
+        #         v_ref_max=0.25,    # <-- (optional) limit reference speed to 0.25 m/s
+        #         ramp_s=0.5         # <-- ease in over 4 s
+        #     )
             
             
-        #if t > 50.0:
-        if t > 40.0:
-            move_A_to(x=-0.5, y= 0.3, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.5, y= -0.3, z=0.0, speed_mps=0.5)
+        # #if t > 50.0:
+        # if t > 40.0:
+        #     move_A_to(x=-0.5, y= 0.3, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.5, y= -0.3, z=0.0, speed_mps=0.5)
             
-        if t > 70.0:
-            move_A_to(x=-0.2, y= 0.4, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.2, y= -0.4, z=0.0, speed_mps=0.5)
+        # if t > 70.0:
+        #     move_A_to(x=-0.2, y= 0.4, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.2, y= -0.4, z=0.0, speed_mps=0.5)
             
-        if t > 90.0:
-            move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
+        # if t > 90.0:
+        #     move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
             
-        if t > 120.0:
-            move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
+        # if t > 120.0:
+        #     move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
 
-        if t > 150.0:
-            move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
-
-        if t > 180.0:
-            move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
-
-        if t > 210.0:
-            move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.6)
-            move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.6)
+        # if t > 150.0:
+        #     move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
 
         # if t > 180.0:
-        #     move_A_to(x=-0.0, y= 0.5, z=0.0, speed_mps=0.5)
-        #     move_B_to(x=-0.0, y= -0.5, z=0.0, speed_mps=0.5)
+        #     move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
 
-        # if t > 220.0:
-        #     move_A_to(x=-0.5, y= -0.0, z=0.0, speed_mps=0.5)
-        #     move_B_to(x=-0.5, y= 0.0, z=0.0, speed_mps=0.5)
+        # if t > 210.0:
+        #     move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.6)
+        #     move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.6)
 
-            # move_A_to(x=0.55, y= 0.90, z=0.0, speed_mps=3.5)
-            # move_B_to(x=-0.52, y= -0.90, z=0.0, speed_mps=3.5)
-            
-            
-        # Keep an eye on contact buffer
-        #warn_if_contact_saturated()
 
         # Smoothly move toward the current targets
         step_movers(model.opt.timestep)
@@ -799,6 +665,9 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
         # draw in-viewer arrows every frame
         draw_velocity_arrows(viewer, model, data, A_cmd, B_cmd)
+        
+        # if 150.0 < t < 150.1:
+        #     save_snapshot(model, data)
 
         viewer.sync()
         time.sleep(0.001)

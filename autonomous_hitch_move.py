@@ -351,21 +351,6 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.6)
             move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.6)
 
-        # if t > 180.0:
-        #     move_A_to(x=-0.0, y= 0.5, z=0.0, speed_mps=0.5)
-        #     move_B_to(x=-0.0, y= -0.5, z=0.0, speed_mps=0.5)
-
-        # if t > 220.0:
-        #     move_A_to(x=-0.5, y= -0.0, z=0.0, speed_mps=0.5)
-        #     move_B_to(x=-0.5, y= 0.0, z=0.0, speed_mps=0.5)
-
-            # move_A_to(x=0.55, y= 0.90, z=0.0, speed_mps=3.5)
-            # move_B_to(x=-0.52, y= -0.90, z=0.0, speed_mps=3.5)
-            
-            
-        # Keep an eye on contact buffer
-        #warn_if_contact_saturated()
-
         # Smoothly move toward the current targets
         step_movers(model.opt.timestep)
 
