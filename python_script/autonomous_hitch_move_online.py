@@ -4,13 +4,17 @@ import mujoco
 import mujoco.viewer
 import os
 
+import matplotlib.pyplot as plt
+from collections import deque
+
+
 try:
     mujoco.mj_setNumThreads(max(1, os.cpu_count() - 1))
 except Exception:
     pass
 
 
-MODEL = "./model/plugin/elasticity/RLhitches.xml"
+MODEL = "../model/plugin/elasticity/RLhitches.xml"
 
 # ------------------- load -------------------
 model = mujoco.MjModel.from_xml_path(MODEL)
@@ -18,6 +22,43 @@ data  = mujoco.MjData(model)
 
 def gname(g):
     return mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or ""
+
+
+
+############################### SNAPSHOT
+SNAP_PATH = "hitch_snapshot.npz"
+
+def save_snapshot(model, data, path=SNAP_PATH):
+    np.savez_compressed(
+        path,
+        qpos=data.qpos.copy(),
+        qvel=data.qvel.copy(),
+        act=getattr(data, "act", np.empty(0)).copy(),
+        ctrl=data.ctrl.copy(),
+        qacc_warmstart=getattr(data, "qacc_warmstart", np.empty(0)).copy(),
+        plugin_state=getattr(data, "plugin_state", np.empty(0)).copy(),
+    )
+    print(f"[snapshot] saved → {os.path.abspath(path)}")
+
+def load_snapshot(model, data, path=SNAP_PATH):
+    Z = np.load(path, allow_pickle=False)
+    def _copy(dst, key):
+        if key in Z and dst.size:
+            n = min(dst.size, Z[key].size)
+            dst.flat[:n] = Z[key].flat[:n]
+    _copy(data.qpos, "qpos")
+    _copy(data.qvel, "qvel")
+    if hasattr(data, "act"): _copy(data.act, "act")
+    _copy(data.ctrl, "ctrl")
+    if hasattr(data, "qacc_warmstart"): _copy(data.qacc_warmstart, "qacc_warmstart")
+    if hasattr(data, "plugin_state"):   _copy(data.plugin_state,   "plugin_state")
+    mujoco.mj_forward(model, data)
+    data.time = 0.0
+    print(f"[snapshot] restored ← {os.path.abspath(path)}")
+
+
+load_snapshot(model, data, SNAP_PATH)
+
 
 # collect the capsule geoms that belong to each cable (by name)
 RA = [g for g in range(model.ngeom)
@@ -70,6 +111,135 @@ model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICIT
 model.opt.solver     = mujoco.mjtSolver.mjSOL_NEWTON
 model.opt.iterations = 100
 model.opt.tolerance  = 1e-6
+
+
+
+plt.ion()
+fig, (ax_speed, ax_vec) = plt.subplots(1, 2, figsize=(11, 4.5))
+try:
+    fig.canvas.manager.set_window_title("Robot speeds (A,B) & commanded velocity vectors")
+except Exception:
+    pass
+
+# history buffers (last N seconds of data)
+HORIZON_S = 100.0
+hist_t   = deque(maxlen=2000)
+hist_vA  = deque(maxlen=2000)  # actual |v| for A
+hist_vB  = deque(maxlen=2000)  # actual |v| for B
+hist_vAc = deque(maxlen=2000)  # commanded |v| for A
+hist_vBc = deque(maxlen=2000)  # commanded |v| for B
+
+# line objects for magnitudes
+ln_vA , = ax_speed.plot([], [], label="A |v| actual")
+ln_vB , = ax_speed.plot([], [], label="B |v| actual")
+ln_vAc, = ax_speed.plot([], [], linestyle="--", label="A |v| commanded")
+ln_vBc, = ax_speed.plot([], [], linestyle="--", label="B |v| commanded")
+ax_speed.set_xlabel("time [s]")
+ax_speed.set_ylabel("speed [m/s]")
+ax_speed.legend(loc="upper right")
+ax_speed.grid(True, alpha=0.3)
+
+# vector plot axes (2D XY vectors)
+ax_vec.set_title("Commanded velocity vectors in XY (A: left, B: right)")
+ax_vec.set_aspect("equal", adjustable="box")
+ax_vec.set_xlim(-1.2, 1.2)
+ax_vec.set_ylim(-1.2, 1.2)
+ax_vec.grid(True, alpha=0.3)
+
+# quiver: initialize ONCE with zero-length arrows for A and B
+anchors_x = np.array([-0.5, 0.5], dtype=float)   # A left, B right
+anchors_y = np.array([ 0.0, 0.0], dtype=float)
+q_cmd = ax_vec.quiver(anchors_x, anchors_y, [0.0, 0.0], [0.0, 0.0],
+                      angles='xy', scale_units='xy', scale=1, color=['C0','C1'])
+
+# previous samples for finite-difference
+_prev_sample_time = 0.0
+_prev_posA = None
+_prev_posB = None
+_prev_A_cmd = None
+_prev_B_cmd = None
+
+# sampling cadence for the plots (sim seconds)
+PLOT_DT_SIM = 0.01  # 50 ms of simulation time
+_last_plot_sim_time = 0.0
+
+def _update_live_plots(sim_time, A_cmd, B_cmd):
+    """
+    Update speed plots and commanded velocity vectors.
+    Uses one persistent quiver (q_cmd) and updates it with set_UVC/set_offsets.
+    """
+    global _prev_sample_time, _prev_posA, _prev_posB, _prev_A_cmd, _prev_B_cmd
+
+    # Initialize on first call
+    if _prev_posA is None or _prev_A_cmd is None:
+        p = get_robot_positions()
+        _prev_posA = p["A_point"].copy()
+        _prev_posB = p["B_point"].copy()
+        _prev_A_cmd = A_cmd.copy()
+        _prev_B_cmd = B_cmd.copy()
+        _prev_sample_time = sim_time
+        return
+
+    dt = max(1e-9, sim_time - _prev_sample_time)
+
+    # Actual velocities from positions
+    p = get_robot_positions()
+    posA, posB = p["A_point"], p["B_point"]
+    vA = (posA - _prev_posA) / dt
+    vB = (posB - _prev_posB) / dt
+
+    # Commanded velocities from A_cmd/B_cmd ramp
+    vA_cmd = (A_cmd - _prev_A_cmd) / dt
+    vB_cmd = (B_cmd - _prev_B_cmd) / dt
+
+    # Update histories
+    hist_t.append(sim_time)
+    hist_vA.append(float(np.linalg.norm(vA)))
+    hist_vB.append(float(np.linalg.norm(vB)))
+    hist_vAc.append(float(np.linalg.norm(vA_cmd)))
+    hist_vBc.append(float(np.linalg.norm(vB_cmd)))
+
+    # Keep last HORIZON_S seconds
+    while len(hist_t) >= 2 and (hist_t[-1] - hist_t[0] > HORIZON_S):
+        hist_t.popleft(); hist_vA.popleft(); hist_vB.popleft(); hist_vAc.popleft(); hist_vBc.popleft()
+
+    # ---- magnitude plot
+    ln_vA.set_data(hist_t, hist_vA)
+    ln_vB.set_data(hist_t, hist_vB)
+    ln_vAc.set_data(hist_t, hist_vAc)
+    ln_vBc.set_data(hist_t, hist_vBc)
+    if hist_t:
+        ax_speed.set_xlim(hist_t[0], max(hist_t[-1], hist_t[0] + 2.0))
+        ymax = max(1e-6, max(max(hist_vA) if hist_vA else 0,
+                             max(hist_vB) if hist_vB else 0,
+                             max(hist_vAc) if hist_vAc else 0,
+                             max(hist_vBc) if hist_vBc else 0))
+        ax_speed.set_ylim(0.0, ymax * 1.25)
+
+    # ---- vector plot (update existing quiver)
+    # Update anchors (optional: keep static)
+    q_cmd.set_offsets(np.c_[anchors_x, anchors_y])
+    # Update U,V to commanded XY velocities
+    U = np.array([vA_cmd[0], vB_cmd[0]], dtype=float)
+    V = np.array([vA_cmd[1], vB_cmd[1]], dtype=float)
+    q_cmd.set_UVC(U, V)
+    ax_vec.set_title(f"Commanded velocity vectors XY  |  "
+                     f"|vA_cmd|={np.linalg.norm(vA_cmd):.2f} m/s, "
+                     f"|vB_cmd|={np.linalg.norm(vB_cmd):.2f} m/s")
+
+    # draw
+    fig.canvas.draw_idle()
+    plt.pause(0.001)
+
+    # Save prevs
+    _prev_posA[:] = posA
+    _prev_posB[:] = posB
+    _prev_A_cmd[:] = A_cmd
+    _prev_B_cmd[:] = B_cmd
+    _prev_sample_time = sim_time
+
+
+
 
 
 # Warn if contact buffer saturates
@@ -284,78 +454,187 @@ def print_robot_positions(prefix=""):
           f"B_point=({Bx:.4f}, {By:.4f}, {Bz:.4f})", flush=True)
 
 
+
+# ---------- in-viewer velocity arrows (actual=green, commanded=blue) ----------
+_vel_prev_time = None
+_vel_prev_posA = None
+_vel_prev_posB = None
+_vel_prev_Acmd = None
+_vel_prev_Bcmd = None
+
+def _add_arrow_to_scene(scn, p0, p1, rgba=(0,1,0,1), width=0.01):
+    """Append one arrow geom from p0 -> p1 into user scene."""
+
+    # pick the right function name for your MuJoCo build
+    _connector = getattr(mujoco, "mjv_connector", None) or getattr(mujoco, "mjv_makeConnector", None)
+    if _connector is None:
+        raise RuntimeError("Could not find mjv_connector / mjv_makeConnector in mujoco module.")
+
+    if scn.ngeom >= scn.maxgeom:
+        return  # out of user-geom slots
+
+    # Grab a free slot and initialize the geom. size/pos/mat are placeholders;
+    # the connector call below will set pose and length.
+    g = scn.geoms[scn.ngeom]
+    mujoco.mjv_initGeom(
+        g,
+        mujoco.mjtGeom.mjGEOM_ARROW,
+        np.zeros(3, dtype=float),           # size (unused here)
+        np.zeros(3, dtype=float),           # pos  (unused here)
+        np.eye(3, dtype=float).ravel(),     # mat  (unused here)
+        np.asarray(rgba, dtype=float),
+    )
+
+    # Set the arrow to connect p0 -> p1 with given shaft width
+    _connector(
+        g,
+        mujoco.mjtGeom.mjGEOM_ARROW,
+        float(width),
+        np.asarray(p0, dtype=float),
+        np.asarray(p1, dtype=float),
+    )
+
+    scn.ngeom += 1
+
+
+def draw_velocity_arrows(viewer, model, data, A_cmd, B_cmd):
+    """Compute actual + commanded velocities and draw arrows at A/B body origins."""
+    global _vel_prev_time, _vel_prev_posA, _vel_prev_posB, _vel_prev_Acmd, _vel_prev_Bcmd
+
+    ida = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "A_point")
+    idb = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "B_point")
+    if ida < 0 or idb < 0:
+        return
+
+    pA = data.xpos[ida].copy()
+    pB = data.xpos[idb].copy()
+    t  = float(data.time)
+
+    # first call: initialize history and skip drawing (no dt yet)
+    if _vel_prev_time is None:
+        _vel_prev_time = t
+        _vel_prev_posA = pA.copy()
+        _vel_prev_posB = pB.copy()
+        _vel_prev_Acmd = A_cmd.copy()
+        _vel_prev_Bcmd = B_cmd.copy()
+        return
+
+    dt = max(1e-9, t - _vel_prev_time)
+
+    # Actual world linear velocities
+    vA = (pA - _vel_prev_posA) / dt
+    vB = (pB - _vel_prev_posB) / dt
+
+    # Commanded velocities from your ramped commands
+    vA_cmd = (A_cmd - _vel_prev_Acmd) / dt
+    vB_cmd = (B_cmd - _vel_prev_Bcmd) / dt
+
+    # Reasonable on-screen length (m per m/s) – adjust to taste
+    scale_actual  = 0.4
+    scale_command = 0.4
+
+    # wipe user geoms and draw fresh arrows
+    scn = viewer.user_scn
+    scn.ngeom = 0
+    _add_arrow_to_scene(scn, pA, pA + scale_actual  * vA,     rgba=(0.0, 0.9, 0.0, 1.0), width=0.006)
+    _add_arrow_to_scene(scn, pA, pA + scale_command * vA_cmd, rgba=(0.2, 0.45, 1.0, 1.0), width=0.004)
+    _add_arrow_to_scene(scn, pB, pB + scale_actual  * vB,     rgba=(0.0, 0.9, 0.0, 1.0), width=0.006)
+    _add_arrow_to_scene(scn, pB, pB + scale_command * vB_cmd, rgba=(0.2, 0.45, 1.0, 1.0), width=0.004)
+
+    # save prevs
+    _vel_prev_time = t
+    _vel_prev_posA[:] = pA
+    _vel_prev_posB[:] = pB
+    _vel_prev_Acmd[:] = A_cmd
+    _vel_prev_Bcmd[:] = B_cmd
+
+
 # ------------------- run with viewer -------------------
 with mujoco.viewer.launch_passive(model, data) as viewer:
     # viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT]  = True
     # viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE]  = True
 
+    # keyboard handler
+    #viewer.user_key_callback = viewer_key_callback
+
+    print("CWD:", os.getcwd())
+    print("Snapshot path:", os.path.abspath(SNAP_PATH))
+
+
     t0 = time.time()
     last_print = 0.0
     last_pos_print = 0.0
 
-    # EXAMPLE: set initial targets once (you can change these anytime)
-    move_A_to(x=-0.2, y= 0.50, z=0.0, speed_mps=0.8)
-    move_B_to(x=-0.2, y= 0.50, z=0.0, speed_mps=0.8)
-
     substeps = 2  # try 2–4 if you go back to 0.001 step
 
     while viewer.is_running():
+        
+        #poll_snapshot_flags()
+        
         t = time.time() - t0
 
         # --- YOUR MANUAL COMMANDS HERE (call whenever you want to change targets) ---
         # Example: after 3s, send A somewhere else and speed it up
-        if t > 5.0:
-            move_A_to(x=-0.95, y= 0.90, z=0.0, speed_mps=0.8)
-            move_B_to(x=-0.90, y= -0.90, z=0.0, speed_mps=0.7)
+        # if t > 5.0:
+        #     move_A_to(x=-0.95, y= 0.90, z=0.0, speed_mps=0.8)
+        #     move_B_to(x=-0.90, y= -0.90, z=0.0, speed_mps=0.7)
             
-        #if t > 35.0:
-        if t > 30.0:
-            circle_from_35(
-                t,
-                R=0.5,
-                period_s=20.0,     # <-- slower (e.g., 18 s per lap)
-                cwA=True,
-                cwB=True,
-                speed_mps=0.8,     # <-- slower ramp to match your actuators
-                v_ref_max=0.25,    # <-- (optional) limit reference speed to 0.25 m/s
-                ramp_s=0.5         # <-- ease in over 4 s
-            )
+        # #if t > 35.0:
+        # if t > 30.0:
+        #     circle_from_35(
+        #         t,
+        #         R=0.5,
+        #         period_s=20.0,     # <-- slower (e.g., 18 s per lap)
+        #         cwA=True,
+        #         cwB=True,
+        #         speed_mps=0.8,     # <-- slower ramp to match your actuators
+        #         v_ref_max=0.25,    # <-- (optional) limit reference speed to 0.25 m/s
+        #         ramp_s=0.5         # <-- ease in over 4 s
+        #     )
             
             
-        #if t > 50.0:
-        if t > 40.0:
-            move_A_to(x=-0.5, y= 0.3, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.5, y= -0.3, z=0.0, speed_mps=0.5)
+        # #if t > 50.0:
+        # if t > 40.0:
+        #     move_A_to(x=-0.5, y= 0.3, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.5, y= -0.3, z=0.0, speed_mps=0.5)
             
-        if t > 70.0:
-            move_A_to(x=-0.2, y= 0.4, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.2, y= -0.4, z=0.0, speed_mps=0.5)
+        # if t > 70.0:
+        #     move_A_to(x=-0.2, y= 0.4, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.2, y= -0.4, z=0.0, speed_mps=0.5)
             
-        if t > 90.0:
-            move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
+        # if t > 90.0:
+        #     move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
             
-        if t > 120.0:
-            move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
+        # if t > 120.0:
+        #     move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
 
-        if t > 150.0:
-            move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
+        # if t > 150.0:
+        #     move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.5)
 
-        if t > 180.0:
-            move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
-            move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
+        # if t > 180.0:
+        #     move_A_to(x=-0.2, y= 0.45, z=0.0, speed_mps=0.5)
+        #     move_B_to(x=-0.2, y= -0.45, z=0.0, speed_mps=0.5)
 
-        if t > 210.0:
-            move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.6)
-            move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.6)
+        # if t > 210.0:
+        #     move_A_to(x=-0.5, y= 0.2, z=0.0, speed_mps=0.6)
+        #     move_B_to(x=-0.5, y= -0.2, z=0.0, speed_mps=0.6)
+
 
         # Smoothly move toward the current targets
         step_movers(model.opt.timestep)
 
         # step sim
         mujoco.mj_step(model, data)
+        
+        # # --- update live plots INPUTS every PLOT_DT_SIM seconds of sim time
+        # sim_time = float(data.time)
+        # if sim_time - _last_plot_sim_time >= PLOT_DT_SIM:
+        #     _update_live_plots(sim_time, A_cmd, B_cmd)
+        #     _last_plot_sim_time = sim_time
+
 
         # compute min surface gap and closest pair (vectorized & fast)
         gap, pair = min_surface_gap_and_pair()
@@ -369,11 +648,9 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         # -----------------------------------
 
 
+        # PRINT ROBOT POSITIONS
         if t - last_pos_print >= 0.1:
             print_robot_positions(prefix=f"[t={t:6.2f}s] ")
-            #print("")
-            #print("[DEBUG] TIME: ", t)
-            #print("")
             last_pos_print = t
 
         # visual highlight: restore, then thicken (and color if allowed)
@@ -386,8 +663,11 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             model.geom_rgba[g1] = np.array([0.0, 1.0, 0.0, 1.0])
             model.geom_rgba[g2] = np.array([0.0, 1.0, 0.0, 1.0])
 
-        # for _ in range(4):  # 4 substeps @ 0.001 -> 250 FPS physics
-        #     mujoco.mj_step(model, data)
+        # draw in-viewer arrows every frame
+        draw_velocity_arrows(viewer, model, data, A_cmd, B_cmd)
+        
+        # if 150.0 < t < 150.1:
+        #     save_snapshot(model, data)
 
         viewer.sync()
         time.sleep(0.001)
