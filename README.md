@@ -15,7 +15,11 @@ This environment was tested in **Ubuntu 24.04**
 2. Enable OpenGL in a container, run `xhost +local:root`
 2. Open it with Visual Studio Code. **IMPORTANT**, you must have `dev container` and `docker extensions`. 
 3. Inside VS code just run `ctrl + shift + p` and look for `Dev Containers: Reopen in Dev Container`
-4. Once you are inside the container and dev environment, inside the folder [python_script](./python_script/) run `python3 autonomous_hitch_move_online.py` to see the simulation in mujoco
+4. Once you are inside the container and dev environment, inside the folder [python_script](./python_script/) run:
+
+```
+python3 autonomous_hitch_move_online.py`
+```
 
 if everything runs well, you should see a mujoco window like this:
 
