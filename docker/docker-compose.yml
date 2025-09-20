@@ -1,0 +1,23 @@
+services:
+  mujoco:
+    container_name: rl_hitches
+    build:
+      context: .
+      dockerfile: mujoco_learning_hitches.Dockerfile
+    ports:
+      - 4567:4567 # Simulator
+    volumes:
+      - ./.vscode/:/home/learning_based_hitches/.vscode/
+      - ../python_script/:/home/learning_based_hitches/python_script
+      - ../include/:/home/learning_based_hitches/include
+      # - ../lib/:/home/learning_based_hitches/python_script
+      - ../model/:/home/learning_based_hitches/model
+      # - ../sample/:/home/learning_based_hitches/sample
+      # - ../simulate/:/home/learning_based_hitches/simulate
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    gpus: all
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - DISPLAY=${DISPLAY}
+    privileged: true
