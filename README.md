@@ -18,7 +18,7 @@ This environment was tested in **Ubuntu 24.04**
 4. Once you are inside the container and dev environment, inside the folder [python_script](./python_script/) run:
 
 ```
-python3 autonomous_hitch_move_online.py`
+python3 autonomous_hitch_move_online.py
 ```
 
 if everything runs well, you should see a mujoco window like this:
